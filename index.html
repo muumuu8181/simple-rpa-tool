@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>シンプルRPAツール v0.1</title>
+    <title>シンプルRPAツール v0.11</title>
     
     <!-- カスタムスタイル -->
     <link rel="stylesheet" href="custom/styles.css">
@@ -82,12 +82,59 @@
         .data-area { background: #f8f9fa; border: 1px solid #dee2e6; padding: 8px; border-radius: 5px; font-family: monospace; min-height: 120px; }
         .hidden { display: none; }
         .user-info { background: #d4edda; color: #155724; padding: 6px; border-radius: 5px; margin-bottom: 8px; }
+        
+        /* ポップアップモーダル */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.8);
+        }
+        .modal-content {
+            position: relative;
+            background-color: #fefefe;
+            margin: 2% auto;
+            padding: 10px;
+            border: 1px solid #888;
+            width: 90%;
+            max-width: 1400px;
+            height: 85vh;
+            border-radius: 10px;
+            overflow: auto;
+        }
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px;
+            border-bottom: 2px solid #ddd;
+            margin-bottom: 10px;
+        }
+        .modal-canvas {
+            cursor: crosshair;
+            border: 2px solid #ddd;
+            display: block;
+            margin: 0 auto;
+        }
+        .close-modal {
+            color: #aaa;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        .close-modal:hover {
+            color: #000;
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="app-header">
-            <h1 class="app-title">🤖 シンプルRPAツール v0.1</h1>
+            <h1 class="app-title">🤖 シンプルRPAツール v0.11</h1>
             <p class="app-subtitle">タスク自動化 - Firebase + Google認証対応</p>
         </div>
         <!-- 認証セクション -->
@@ -151,7 +198,7 @@
 
         <h3>📋 アプリログ <button class="universal-copy-btn" onclick="copyLogs()" style="background: #28a745; color: white; border: none; padding: 4px 8px; border-radius: 3px; cursor: pointer; font-size: 12px;">📋 ログをコピー</button></h3>
         <div class="data-area" id="logArea">
-            シンプルRPAツール v0.1 起動完了...<br>
+            シンプルRPAツール v0.11 起動完了...<br>
             🔥 Firebase設定完了<br>
             🔐 Google認証準備完了<br>
             🤖 RPA機能開発中...<br>
@@ -167,6 +214,35 @@
             <button class="universal-copy-btn" onclick="forceAuthCheck()" style="background: #fd7e14; color: white; border: none; padding: 8px 12px; border-radius: 5px; cursor: pointer; margin: 5px;">🔄 認証状態確認</button>
             <button class="universal-copy-btn" onclick="checkFirebaseConfig()" style="background: #dc3545; color: white; border: none; padding: 8px 12px; border-radius: 5px; cursor: pointer; margin: 5px;">🔧 Firebase設定</button>
             <button class="universal-copy-btn" onclick="testPopup()" style="background: #20c997; color: white; border: none; padding: 8px 12px; border-radius: 5px; cursor: pointer; margin: 5px;">🧪 ポップアップテスト</button>
+        </div>
+    </div>
+    
+    <!-- ポップアップモーダル -->
+    <div id="editModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>🖼️ スクリーンショット編集</h2>
+                <span class="close-modal" onclick="closeModal()">&times;</span>
+            </div>
+            <div style="text-align: center; margin: 10px 0;">
+                <span style="font-size: 14px; color: #666;">🕹️ マウスでドラッグしてクリック領域を選択</span>
+            </div>
+            <canvas id="modalCanvas" class="modal-canvas"></canvas>
+            <div style="margin: 10px; text-align: center;">
+                <button onclick="clearAllRegions()" class="save-button" style="background: #dc3545; margin: 5px;">
+                    🗑️ クリア
+                </button>
+                <button onclick="executeClicks()" class="save-button" style="background: #28a745; margin: 5px;">
+                    ▶️ 順番にクリック実行
+                </button>
+                <button onclick="saveTask()" class="save-button" style="margin: 5px;">
+                    💾 タスク保存
+                </button>
+            </div>
+            <div id="modalRegionsList" style="margin: 10px; padding: 10px; background: #f8f9fa; border-radius: 5px;">
+                <h4 style="margin: 5px 0;">🎯 選択した領域</h4>
+                <div id="modalRegionsContent" style="font-size: 12px;">まだ領域が選択されていません</div>
+            </div>
         </div>
     </div>
 
@@ -199,6 +275,10 @@
         // Canvas初期化とイベント設定
         const canvas = document.getElementById('screenshotCanvas');
         const ctx = canvas.getContext('2d');
+        const modalCanvas = document.getElementById('modalCanvas');
+        const modalCtx = modalCanvas.getContext('2d');
+        let activeCanvas = canvas;
+        let activeCtx = ctx;
         
         // スクリーンキャプチャ処理
         window.captureScreen = async () => {
@@ -219,9 +299,18 @@
                 
                 video.onloadedmetadata = () => {
                     // Canvasにスクリーンショットを描画
-                    canvas.width = video.videoWidth;
-                    canvas.height = video.videoHeight;
+                    const width = video.videoWidth;
+                    const height = video.videoHeight;
+                    
+                    // 小さいCanvasにも描画
+                    canvas.width = width;
+                    canvas.height = height;
                     ctx.drawImage(video, 0, 0);
+                    
+                    // モーダルCanvasにも描画
+                    modalCanvas.width = width;
+                    modalCanvas.height = height;
+                    modalCtx.drawImage(video, 0, 0);
                     
                     // ストリームを停止
                     stream.getTracks().forEach(track => track.stop());
@@ -232,7 +321,10 @@
                         img.onload = () => {
                             currentImage = img;
                             redrawCanvas();
-                            log(`✅ スクリーンショット取得完了: ${canvas.width}x${canvas.height}px`);
+                            log(`✅ スクリーンショット取得完了: ${width}x${height}px`);
+                            
+                            // ポップアップを開く
+                            openModal();
                         };
                         img.src = URL.createObjectURL(blob);
                     });
@@ -243,57 +335,91 @@
             }
         };
         
+        // ポップアップを開く
+        function openModal() {
+            document.getElementById('editModal').style.display = 'block';
+            activeCanvas = modalCanvas;
+            activeCtx = modalCtx;
+            redrawCanvas();
+            setupModalCanvasEvents();
+        }
+        
+        // ポップアップを閉じる
+        window.closeModal = () => {
+            document.getElementById('editModal').style.display = 'none';
+            activeCanvas = canvas;
+            activeCtx = ctx;
+            redrawCanvas();
+        };
+        
         // Canvas再描画
         function redrawCanvas() {
             if (!currentImage) return;
             
-            // 画像を描画
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            ctx.drawImage(currentImage, 0, 0);
-            
-            // 選択領域を描画（色分け）
-            selectedRegions.forEach((region, index) => {
-                const color = regionColors[index % regionColors.length];
+            // 両方のCanvasに描画
+            [{ canvas: canvas, ctx: ctx }, { canvas: modalCanvas, ctx: modalCtx }].forEach(({ canvas, ctx }) => {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                ctx.drawImage(currentImage, 0, 0);
                 
-                // 半透明の塗りつぶし
-                ctx.fillStyle = color + '30';
-                ctx.fillRect(region.x, region.y, region.width, region.height);
-                
-                // 枠線
-                ctx.strokeStyle = color;
-                ctx.lineWidth = 3;
-                ctx.strokeRect(region.x, region.y, region.width, region.height);
-                
-                // 領域番号を表示
-                ctx.fillStyle = 'white';
-                ctx.fillRect(region.x, region.y, 30, 30);
-                ctx.fillStyle = color;
-                ctx.font = 'bold 20px Arial';
-                ctx.fillText(`${index + 1}`, region.x + 8, region.y + 23);
+                // 選択領域を描画（色分け）
+                selectedRegions.forEach((region, index) => {
+                    const color = regionColors[index % regionColors.length];
+                    
+                    // 半透明の塗りつぶし
+                    ctx.fillStyle = color + '30';
+                    ctx.fillRect(region.x, region.y, region.width, region.height);
+                    
+                    // 枠線
+                    ctx.strokeStyle = color;
+                    ctx.lineWidth = 3;
+                    ctx.strokeRect(region.x, region.y, region.width, region.height);
+                    
+                    // 領域番号を表示
+                    ctx.fillStyle = 'white';
+                    ctx.fillRect(region.x, region.y, 30, 30);
+                    ctx.fillStyle = color;
+                    ctx.font = 'bold 20px Arial';
+                    ctx.fillText(`${index + 1}`, region.x + 8, region.y + 23);
+                });
             });
             
             updateRegionsList();
         }
         
+        // モーダルCanvasのイベント設定
+        function setupModalCanvasEvents() {
+            // 既存のイベントリスナーを削除
+            modalCanvas.onmousedown = null;
+            modalCanvas.onmousemove = null;
+            modalCanvas.onmouseup = null;
+            
+            modalCanvas.addEventListener('mousedown', handleMouseDown);
+            modalCanvas.addEventListener('mousemove', handleMouseMove);
+            modalCanvas.addEventListener('mouseup', handleMouseUp);
+        }
+        
         // マウスイベント処理
-        canvas.addEventListener('mousedown', (e) => {
+        function handleMouseDown(e) {
             if (!currentImage) return;
             
-            const rect = canvas.getBoundingClientRect();
-            const scaleX = canvas.width / rect.width;
-            const scaleY = canvas.height / rect.height;
+            const targetCanvas = e.target;
+            const rect = targetCanvas.getBoundingClientRect();
+            const scaleX = targetCanvas.width / rect.width;
+            const scaleY = targetCanvas.height / rect.height;
             
             startX = (e.clientX - rect.left) * scaleX;
             startY = (e.clientY - rect.top) * scaleY;
             isDrawing = true;
-        });
+        }
         
-        canvas.addEventListener('mousemove', (e) => {
+        function handleMouseMove(e) {
             if (!isDrawing || !currentImage) return;
             
-            const rect = canvas.getBoundingClientRect();
-            const scaleX = canvas.width / rect.width;
-            const scaleY = canvas.height / rect.height;
+            const targetCanvas = e.target;
+            const rect = targetCanvas.getBoundingClientRect();
+            const scaleX = targetCanvas.width / rect.width;
+            const scaleY = targetCanvas.height / rect.height;
+            const targetCtx = targetCanvas.getContext('2d');
             
             const currentX = (e.clientX - rect.left) * scaleX;
             const currentY = (e.clientY - rect.top) * scaleY;
@@ -301,19 +427,20 @@
             redrawCanvas();
             
             // 現在描画中の矩形を表示
-            ctx.strokeStyle = '#00ff00';
-            ctx.lineWidth = 2;
-            ctx.setLineDash([5, 5]);
-            ctx.strokeRect(startX, startY, currentX - startX, currentY - startY);
-            ctx.setLineDash([]);
-        });
+            targetCtx.strokeStyle = '#00ff00';
+            targetCtx.lineWidth = 2;
+            targetCtx.setLineDash([5, 5]);
+            targetCtx.strokeRect(startX, startY, currentX - startX, currentY - startY);
+            targetCtx.setLineDash([]);
+        }
         
-        canvas.addEventListener('mouseup', (e) => {
+        function handleMouseUp(e) {
             if (!isDrawing || !currentImage) return;
             
-            const rect = canvas.getBoundingClientRect();
-            const scaleX = canvas.width / rect.width;
-            const scaleY = canvas.height / rect.height;
+            const targetCanvas = e.target;
+            const rect = targetCanvas.getBoundingClientRect();
+            const scaleX = targetCanvas.width / rect.width;
+            const scaleY = targetCanvas.height / rect.height;
             
             const endX = (e.clientX - rect.left) * scaleX;
             const endY = (e.clientY - rect.top) * scaleY;
@@ -335,21 +462,32 @@
             
             isDrawing = false;
             redrawCanvas();
-        });
+        }
+        
+        // 小さいCanvasのイベントも設定
+        canvas.addEventListener('mousedown', handleMouseDown);
+        canvas.addEventListener('mousemove', handleMouseMove);
+        canvas.addEventListener('mouseup', handleMouseUp);
         
         // 領域リストを更新
         function updateRegionsList() {
             const list = document.getElementById('regionsList');
+            const modalList = document.getElementById('modalRegionsContent');
+            
+            let content = '';
             if (selectedRegions.length === 0) {
-                list.innerHTML = 'まだ領域が選択されていません';
+                content = 'まだ領域が選択されていません';
             } else {
                 const colorNames = ['赤', '青', '緑', 'オレンジ', '紫', '水色', 'ピンク', '黄色'];
-                list.innerHTML = selectedRegions.map((region, index) => {
+                content = selectedRegions.map((region, index) => {
                     const color = regionColors[index % regionColors.length];
                     const colorName = colorNames[index % colorNames.length];
                     return `<span style="color: ${color}; font-weight: bold;">領域${index + 1}（${colorName}）</span>: (${Math.round(region.x)}, ${Math.round(region.y)}) - ${Math.round(region.width)}x${Math.round(region.height)}px`;
                 }).join('<br>');
             }
+            
+            list.innerHTML = content;
+            if (modalList) modalList.innerHTML = content;
         }
         
         // 全領域をクリア
