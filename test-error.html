@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>エラー収集システム テスト</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; background: #f5f5f5; }
+        .container { max-width: 800px; margin: 0 auto; background: white; padding: 20px; border-radius: 10px; }
+        .test-btn { background: #dc3545; color: white; border: none; padding: 10px 20px; margin: 10px; border-radius: 5px; cursor: pointer; }
+        .test-btn:hover { background: #c82333; }
+        .info-btn { background: #17a2b8; }
+        .info-btn:hover { background: #138496; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚨 エラー収集システム テスト</h1>
+        <p>このページでは意図的にエラーを発生させて、エラー収集システムの動作を確認できます。</p>
+        
+        <h3>テスト用エラー生成ボタン</h3>
+        <button class="test-btn" onclick="testJavaScriptError()">JavaScript エラー</button>
+        <button class="test-btn" onclick="testPromiseRejection()">Promise Rejection</button>
+        <button class="test-btn" onclick="testFirebaseError()">Firebase エラー</button>
+        <button class="test-btn" onclick="testManualReport()">手動エラー報告</button>
+        
+        <h3>システム情報</h3>
+        <button class="test-btn info-btn" onclick="showErrorCollectorStatus()">収集システム状況</button>
+        <button class="test-btn info-btn" onclick="testConsoleLog()">デバッグログ</button>
+        
+        <div id="status" style="background: #e9ecef; padding: 15px; margin-top: 20px; border-radius: 5px;">
+            <h4>ステータス:</h4>
+            <pre id="statusContent">エラー収集システム読み込み中...</pre>
+        </div>
+    </div>
+
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+
+    <script>
+        // Firebase設定
+        const firebaseConfig = {
+            apiKey: "AIzaSyA5PXKChizYDCXF_GJ4KL6Ylq9K5hCPXWE",
+            authDomain: "shares-b1b97.firebaseapp.com",
+            databaseURL: "https://shares-b1b97-default-rtdb.firebaseio.com",
+            projectId: "shares-b1b97",
+            storageBucket: "shares-b1b97.firebasestorage.app",
+            messagingSenderId: "38311063248",
+            appId: "1:38311063248:web:0d2d5726d12b305b24b8d5"
+        };
+
+        // Firebase初期化
+        firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
+        const database = firebase.database();
+
+        // 簡易エラー収集システム
+        class SimpleErrorCollector {
+            constructor() {
+                this.initialized = false;
+                this.errorCount = 0;
+                this.setupGlobalHandlers();
+            }
+
+            setupGlobalHandlers() {
+                window.addEventListener('error', (event) => {
+                    this.collectError({
+                        type: 'javascript-error',
+                        message: event.message,
+                        filename: event.filename,
+                        lineno: event.lineno,
+                        error: event.error
+                    });
+                });
+
+                window.addEventListener('unhandledrejection', (event) => {
+                    this.collectError({
+                        type: 'promise-rejection',
+                        message: event.reason?.message || String(event.reason),
+                        error: event.reason
+                    });
+                });
+
+                this.initialized = true;
+            }
+
+            collectError(errorInfo) {
+                this.errorCount++;
+                const errorData = {
+                    id: `error_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                    appName: "Error Test Page",
+                    appVersion: "0.2",
+                    timestamp: Date.now(),
+                    type: errorInfo.type,
+                    message: errorInfo.message,
+                    stack: errorInfo.error?.stack || 'No stack trace',
+                    userAgent: navigator.userAgent
+                };
+
+                // Firebaseに保存
+                database.ref('system/errors').push(errorData).then(() => {
+                    console.log('🚨 エラー収集完了:', errorData.id);
+                }).catch((error) => {
+                    console.error('エラー保存失敗:', error);
+                });
+            }
+
+            reportError(message, details = {}) {
+                this.collectError({
+                    type: 'manual-report',
+                    message: message,
+                    details: details,
+                    error: new Error(message)
+                });
+            }
+
+            getStatus() {
+                return {
+                    initialized: this.initialized,
+                    errorCount: this.errorCount,
+                    appInfo: { name: "Error Test Page", version: "0.2" }
+                };
+            }
+        }
+
+        // エラー収集システム初期化
+        window.errorCollector = new SimpleErrorCollector();
+        
+        // 初期化完了後にステータス表示
+        setTimeout(() => {
+            const status = window.errorCollector.getStatus();
+            document.getElementById('statusContent').textContent = 
+                `✅ エラー収集システム準備完了\n` +
+                `初期化: ${status.initialized}\n` +
+                `エラー数: ${status.errorCount}\n` +
+                `アプリ情報: ${JSON.stringify(status.appInfo, null, 2)}`;
+        }, 1000);
+
+        // テスト関数をグローバルに定義
+        window.testJavaScriptError = function() {
+            // 意図的なJavaScriptエラー
+            const obj = null;
+            obj.push('test'); // TypeError
+        };
+
+        window.testPromiseRejection = function() {
+            // 意図的なPromise rejection
+            Promise.reject(new Error('テスト用Promise拒否エラー'));
+        };
+
+        window.testFirebaseError = function() {
+            // Firebase関連エラー（認証なしでデータベース操作）
+            database.ref('test-collection').push({ test: 'data' })
+                .catch(error => console.error('Firebase操作エラー（意図的）:', error));
+        };
+
+        window.testManualReport = function() {
+            // 手動エラー報告
+            if (window.errorCollector) {
+                window.errorCollector.reportError('手動テストエラー', {
+                    testType: 'manual',
+                    timestamp: new Date().toISOString(),
+                    userAction: 'ボタンクリック'
+                });
+                alert('手動エラー報告を送信しました');
+            } else {
+                alert('エラー収集システムが利用できません');
+            }
+        };
+
+        window.showErrorCollectorStatus = function() {
+            if (window.errorCollector) {
+                const status = window.errorCollector.getStatus();
+                alert(JSON.stringify(status, null, 2));
+            } else {
+                alert('エラー収集システムが利用できません');
+            }
+        };
+
+        window.testConsoleLog = function() {
+            console.log('🚨 デバッグ: テストログ出力');
+            console.warn('⚠️ テスト警告メッセージ');
+            console.error('❌ テストエラーメッセージ（Firebase関連）');
+        };
+    </script>
+</body>
+</html>
