@@ -105,13 +105,12 @@
         <!-- スクリーンショットRPAセクション -->
         <div class="weight-input hidden" id="weightInput">
             <div class="input-card">
-                <h3 style="margin-top: 0; margin-bottom: 8px;">📸 スクリーンショット取得</h3>
+                <h3 style="margin-top: 0; margin-bottom: 8px;">📸 スクリーンショットRPA</h3>
                 
-                <!-- 画像アップロード部分 -->
+                <!-- スクリーンキャプチャ部分 -->
                 <div style="margin-bottom: 10px;">
-                    <input type="file" id="imageUpload" accept="image/*" onchange="handleImageUpload(event)" style="display: none;">
-                    <button onclick="document.getElementById('imageUpload').click()" class="save-button" style="background: #4285f4; width: 100%;">
-                        📤 画像をアップロード
+                    <button onclick="captureScreen()" class="save-button" style="background: #4285f4; width: 100%;">
+                        🕹️ デスクトップをスクリーンショット
                     </button>
                 </div>
                 
@@ -125,6 +124,11 @@
                     <h4 style="margin: 5px 0;">🎯 クリック対象領域</h4>
                     <div id="regionsList" style="font-size: 12px; color: #666;">まだ領域が選択されていません</div>
                 </div>
+                
+                <!-- 実行ボタン -->
+                <button onclick="executeClicks()" class="save-button" style="background: #28a745; width: 100%; margin-top: 10px;">
+                    ▶️ 順番にクリック実行
+                </button>
                 
                 <!-- アクションボタン -->
                 <div style="display: flex; gap: 10px; margin-top: 10px;">
@@ -188,29 +192,55 @@
         let currentImage = null;
         let isDrawing = false;
         let startX = 0, startY = 0;
+        
+        // 色の配列（順番ごとに色分け）
+        const regionColors = ['#ff0000', '#0066ff', '#00cc00', '#ff9900', '#9900ff', '#00cccc', '#ff00ff', '#ffcc00'];
 
         // Canvas初期化とイベント設定
         const canvas = document.getElementById('screenshotCanvas');
         const ctx = canvas.getContext('2d');
         
-        // 画像アップロード処理
-        window.handleImageUpload = (event) => {
-            const file = event.target.files[0];
-            if (!file) return;
-            
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                const img = new Image();
-                img.onload = () => {
-                    currentImage = img;
-                    canvas.width = img.width;
-                    canvas.height = img.height;
-                    redrawCanvas();
-                    log(`📷 画像を読み込みました: ${img.width}x${img.height}px`);
+        // スクリーンキャプチャ処理
+        window.captureScreen = async () => {
+            try {
+                log('🕹️ スクリーンキャプチャを開始...');
+                
+                // Screen Capture APIを使用
+                const stream = await navigator.mediaDevices.getDisplayMedia({
+                    video: { 
+                        cursor: 'always',
+                        displaySurface: 'monitor'
+                    }
+                });
+                
+                const video = document.createElement('video');
+                video.srcObject = stream;
+                video.play();
+                
+                video.onloadedmetadata = () => {
+                    // Canvasにスクリーンショットを描画
+                    canvas.width = video.videoWidth;
+                    canvas.height = video.videoHeight;
+                    ctx.drawImage(video, 0, 0);
+                    
+                    // ストリームを停止
+                    stream.getTracks().forEach(track => track.stop());
+                    
+                    // 画像として保存
+                    canvas.toBlob((blob) => {
+                        const img = new Image();
+                        img.onload = () => {
+                            currentImage = img;
+                            redrawCanvas();
+                            log(`✅ スクリーンショット取得完了: ${canvas.width}x${canvas.height}px`);
+                        };
+                        img.src = URL.createObjectURL(blob);
+                    });
                 };
-                img.src = e.target.result;
-            };
-            reader.readAsDataURL(file);
+            } catch (error) {
+                log(`❌ スクリーンキャプチャエラー: ${error.message}`);
+                alert('スクリーンキャプチャがキャンセルされたか、許可されませんでした');
+            }
         };
         
         // Canvas再描画
@@ -221,16 +251,25 @@
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             ctx.drawImage(currentImage, 0, 0);
             
-            // 選択領域を描画
+            // 選択領域を描画（色分け）
             selectedRegions.forEach((region, index) => {
-                ctx.strokeStyle = '#ff0000';
-                ctx.lineWidth = 2;
+                const color = regionColors[index % regionColors.length];
+                
+                // 半透明の塗りつぶし
+                ctx.fillStyle = color + '30';
+                ctx.fillRect(region.x, region.y, region.width, region.height);
+                
+                // 枠線
+                ctx.strokeStyle = color;
+                ctx.lineWidth = 3;
                 ctx.strokeRect(region.x, region.y, region.width, region.height);
                 
                 // 領域番号を表示
-                ctx.fillStyle = '#ff0000';
+                ctx.fillStyle = 'white';
+                ctx.fillRect(region.x, region.y, 30, 30);
+                ctx.fillStyle = color;
                 ctx.font = 'bold 20px Arial';
-                ctx.fillText(`${index + 1}`, region.x + 5, region.y + 25);
+                ctx.fillText(`${index + 1}`, region.x + 8, region.y + 23);
             });
             
             updateRegionsList();
@@ -289,7 +328,9 @@
             
             if (region.width > 5 && region.height > 5) {
                 selectedRegions.push(region);
-                log(`🎯 領域${selectedRegions.length}を追加: ${Math.round(region.width)}x${Math.round(region.height)}px`);
+                const color = regionColors[(selectedRegions.length - 1) % regionColors.length];
+                const colorName = ['赤', '青', '緑', 'オレンジ', '紫', '水色', 'ピンク', '黄色'][(selectedRegions.length - 1) % 8];
+                log(`🎯 領域${selectedRegions.length}（${colorName}）を追加: ${Math.round(region.width)}x${Math.round(region.height)}px`);
             }
             
             isDrawing = false;
@@ -302,9 +343,12 @@
             if (selectedRegions.length === 0) {
                 list.innerHTML = 'まだ領域が選択されていません';
             } else {
-                list.innerHTML = selectedRegions.map((region, index) => 
-                    `領域${index + 1}: (${Math.round(region.x)}, ${Math.round(region.y)}) - ${Math.round(region.width)}x${Math.round(region.height)}px`
-                ).join('<br>');
+                const colorNames = ['赤', '青', '緑', 'オレンジ', '紫', '水色', 'ピンク', '黄色'];
+                list.innerHTML = selectedRegions.map((region, index) => {
+                    const color = regionColors[index % regionColors.length];
+                    const colorName = colorNames[index % colorNames.length];
+                    return `<span style="color: ${color}; font-weight: bold;">領域${index + 1}（${colorName}）</span>: (${Math.round(region.x)}, ${Math.round(region.y)}) - ${Math.round(region.width)}x${Math.round(region.height)}px`;
+                }).join('<br>');
             }
         }
         
