@@ -345,6 +345,53 @@
                 log(`❌ 保存エラー: ${error.message}`);
             }
         };
+        
+        // 順番にクリック実行（シミュレーション）
+        window.executeClicks = async () => {
+            if (selectedRegions.length === 0) {
+                alert('クリックする領域を選択してください');
+                return;
+            }
+            
+            log('🎮 クリック実行開始...');
+            
+            for (let i = 0; i < selectedRegions.length; i++) {
+                const region = selectedRegions[i];
+                const centerX = region.x + region.width / 2;
+                const centerY = region.y + region.height / 2;
+                const colorName = ['赤', '青', '緑', 'オレンジ', '紫', '水色', 'ピンク', '黄色'][i % 8];
+                
+                log(`🖱️ 領域${i + 1}（${colorName}）をクリック: (${Math.round(centerX)}, ${Math.round(centerY)})`);
+                
+                // クリック位置を視覚的に表示
+                highlightClick(centerX, centerY, i);
+                
+                // 次のクリックまで少し待つ
+                await new Promise(resolve => setTimeout(resolve, 1000));
+            }
+            
+            log('✅ すべてのクリックを完了しました');
+        };
+        
+        // クリック位置を視覚的に表示
+        function highlightClick(x, y, index) {
+            const color = regionColors[index % regionColors.length];
+            
+            // クリックポイントに円を描画
+            redrawCanvas();
+            ctx.beginPath();
+            ctx.arc(x, y, 20, 0, 2 * Math.PI);
+            ctx.fillStyle = color + '80';
+            ctx.fill();
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 3;
+            ctx.stroke();
+            
+            // クリック番号を表示
+            ctx.fillStyle = 'white';
+            ctx.font = 'bold 16px Arial';
+            ctx.fillText(`${index + 1}`, x - 8, y + 6);
+        }
 
         // 認証状態の監視（改良版）
         auth.onAuthStateChanged((user) => {
